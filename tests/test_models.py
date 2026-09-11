@@ -59,3 +59,32 @@ def test_final_review_score_clamped_by_field() -> None:
 def test_review_request_rejects_blank_code() -> None:
     with pytest.raises(ValidationError):
         ReviewRequest(source_code="   \n", language="Python")
+
+
+def test_coalesce_keeps_specialist_findings_when_gemini_lists_are_empty() -> None:
+    from agents.final_review_agent import coalesce_final_review
+
+    specialist = AgentReview(
+        agent_name="Bug Detection Agent",
+        findings=[
+            Finding(
+                category="logic",
+                severity=Severity.CRITICAL,
+                title="Off-by-one",
+                description="Loop overshoots the array.",
+                suggested_fix="Use length - 1.",
+            )
+        ],
+        summary="Found a crash.",
+    )
+    gemini = FinalReview(
+        overall_score=50,
+        summary="The code has a critical logic error.",
+    )
+    merged = coalesce_final_review(gemini, [specialist], [])
+    assert merged.critical_issues
+    assert merged.critical_issues[0].title == "Off-by-one"
+    assert merged.overall_score == 80
+    assert "critical logic error" in merged.summary
+    assert merged.suggested_fixes
+

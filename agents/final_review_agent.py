@@ -46,8 +46,10 @@ Bucket findings:
 Testing findings should inform recommended_test_cases; include the most serious testing
 gaps in code_quality_issues only if they are truly quality/process issues.
 
-Write a concise executive summary.
-agent_summaries should be short per-agent notes including any agent failures.
+You MUST populate the finding lists. Copy each specialist finding into the correct bucket.
+Do not leave critical_issues, bugs, security_vulnerabilities, performance_problems,
+code_quality_issues, suggested_fixes, or recommended_test_cases empty if specialists
+reported matching items. Nested lists are required, not only the summary.
 """.strip()
 
 
@@ -62,31 +64,49 @@ def _reviews_as_json(reviews: list[AgentReview]) -> str:
     return json.dumps(payload, indent=2)
 
 
-def _fallback_final_review(reviews: list[AgentReview], errors: list[str]) -> FinalReview:
-    """Deterministic aggregation if the final Gemini call fails.
-
-    Still used only after a real specialist run; this path exists so the UI can
-    show partial results instead of crashing.
-    """
-    all_findings: list[Finding] = []
-    seen: set[tuple[str, str, str | None]] = set()
-    for review in reviews:
-        for finding in review.findings:
-            key = (finding.title.strip().lower(), finding.category.lower(), finding.code_snippet)
-            if key in seen:
-                continue
-            seen.add(key)
-            all_findings.append(finding)
-
-    severity_rank = {
-        Severity.CRITICAL: 0,
-        Severity.HIGH: 1,
-        Severity.MEDIUM: 2,
-        Severity.LOW: 3,
-        Severity.INFO: 4,
+def _normalize_category(category: str) -> str:
+    text = (category or "").strip().lower()
+    aliases = {
+        "bug": "bug",
+        "bugs": "bug",
+        "correctness": "bug",
+        "logic": "bug",
+        "logical": "bug",
+        "runtime": "bug",
+        "security": "security",
+        "vulnerability": "security",
+        "vulnerabilities": "security",
+        "performance": "performance",
+        "perf": "performance",
+        "quality": "quality",
+        "code quality": "quality",
+        "maintainability": "quality",
+        "style": "quality",
+        "testing": "testing",
+        "test": "testing",
+        "tests": "testing",
     }
-    all_findings.sort(key=lambda item: (severity_rank[item.severity], -item.confidence))
+    if text in aliases:
+        return aliases[text]
+    for key, mapped in aliases.items():
+        if key in text:
+            return mapped
+    return text or "quality"
 
+
+def _dedupe_findings(findings: list[Finding]) -> list[Finding]:
+    seen: set[tuple[str, str, str | None]] = set()
+    unique: list[Finding] = []
+    for finding in findings:
+        key = (finding.title.strip().lower(), _normalize_category(finding.category), finding.code_snippet)
+        if key in seen:
+            continue
+        seen.add(key)
+        unique.append(finding.model_copy(update={"category": _normalize_category(finding.category)}))
+    return unique
+
+
+def _score_from_findings(findings: list[Finding], errors: list[str]) -> int:
     deductions = {
         Severity.CRITICAL: 20,
         Severity.HIGH: 10,
@@ -95,64 +115,133 @@ def _fallback_final_review(reviews: list[AgentReview], errors: list[str]) -> Fin
         Severity.INFO: 0,
     }
     score = 100
-    for finding in all_findings:
-        score -= deductions[finding.severity]
+    for finding in findings:
+        score -= deductions.get(finding.severity, 0)
     if errors:
         score -= min(15, 5 * len(errors))
-    score = max(0, min(100, score))
+    return max(0, min(100, score))
 
-    critical = [f for f in all_findings if f.severity == Severity.CRITICAL]
-    critical_titles = {f.title for f in critical}
+
+def _bucket_findings(findings: list[Finding]) -> dict[str, list[Finding]]:
+    used: set[int] = set()
+    critical = [item for item in findings if item.severity == Severity.CRITICAL]
+    used.update(id(item) for item in critical)
 
     def remaining(category: str) -> list[Finding]:
-        return [
-            f
-            for f in all_findings
-            if f.category.lower() == category and f.title not in critical_titles
+        items = [
+            item
+            for item in findings
+            if item.category == category and id(item) not in used
         ]
+        used.update(id(item) for item in items)
+        return items
 
+    bugs = remaining("bug")
+    security = remaining("security")
+    performance = remaining("performance")
+    quality = remaining("quality") + remaining("testing")
+    leftovers = [item for item in findings if id(item) not in used]
+    return {
+        "critical_issues": critical,
+        "bugs": bugs,
+        "security_vulnerabilities": security,
+        "performance_problems": performance,
+        "code_quality_issues": quality + leftovers,
+    }
+
+
+def _findings_from_final(review: FinalReview) -> list[Finding]:
+    grouped: list[Finding] = []
+    for group in (
+        review.critical_issues,
+        review.bugs,
+        review.security_vulnerabilities,
+        review.performance_problems,
+        review.code_quality_issues,
+    ):
+        grouped.extend(group)
+    return _dedupe_findings(grouped)
+
+
+def _findings_from_specialists(reviews: list[AgentReview]) -> list[Finding]:
+    grouped: list[Finding] = []
+    for review in reviews:
+        grouped.extend(review.findings)
+    return _dedupe_findings(grouped)
+
+
+def _fallback_final_review(reviews: list[AgentReview], errors: list[str]) -> FinalReview:
+    """Deterministic aggregation from specialist findings."""
+    findings = _findings_from_specialists(reviews)
+    severity_rank = {
+        Severity.CRITICAL: 0,
+        Severity.HIGH: 1,
+        Severity.MEDIUM: 2,
+        Severity.LOW: 3,
+        Severity.INFO: 4,
+    }
+    findings.sort(key=lambda item: (severity_rank[item.severity], -item.confidence))
+    buckets = _bucket_findings(findings)
+    tests = [
+        RecommendedTest(title=item.title, description=item.description, test_type="unit")
+        for item in findings
+        if item.category == "testing"
+    ][:10]
     fixes = [
         SuggestedFix(
-            title=f"Fix: {finding.title}",
-            description=finding.suggested_fix or finding.description,
-            severity=finding.severity,
-            related_finding_title=finding.title,
+            title=f"Fix: {item.title}",
+            description=item.suggested_fix or item.description,
+            severity=item.severity,
+            related_finding_title=item.title,
         )
-        for finding in all_findings[:12]
-        if finding.severity in {Severity.CRITICAL, Severity.HIGH, Severity.MEDIUM}
+        for item in findings[:12]
+        if item.severity in {Severity.CRITICAL, Severity.HIGH, Severity.MEDIUM}
     ]
-    tests = [
-        RecommendedTest(
-            title=finding.title,
-            description=finding.description,
-            test_type="unit",
-        )
-        for finding in all_findings
-        if finding.category.lower() == "testing"
-    ][:10]
-
     summaries = [
         f"{review.agent_name}: {'ok' if review.succeeded else 'failed'} — {review.summary}"
         for review in reviews
     ]
-    summary = (
-        "Unified review assembled locally because the Final Review Agent call failed. "
-        "Specialist findings were de-duplicated by title/category."
-    )
+    summary = "Unified review from specialist findings."
     if errors:
         summary += " Some specialist agents reported errors."
-
     return FinalReview(
-        overall_score=score,
+        overall_score=_score_from_findings(findings, errors),
         summary=summary,
-        critical_issues=critical,
-        bugs=remaining("bug"),
-        security_vulnerabilities=remaining("security"),
-        performance_problems=remaining("performance"),
-        code_quality_issues=remaining("quality"),
         suggested_fixes=fixes,
         recommended_test_cases=tests,
         agent_summaries=summaries,
+        **buckets,
+    )
+
+
+def coalesce_final_review(
+    gemini: FinalReview,
+    reviews: list[AgentReview],
+    errors: list[str],
+) -> FinalReview:
+    """Keep Gemini's summary, but never drop specialist findings.
+
+    Smaller Gemini models often fill summary/score and leave nested lists empty.
+    """
+    local = _fallback_final_review(reviews, errors)
+    gemini_findings = _findings_from_final(gemini)
+    specialist_findings = _findings_from_specialists(reviews)
+    combined = _dedupe_findings(gemini_findings + specialist_findings)
+    buckets = _bucket_findings(combined)
+    score = gemini.overall_score
+    if not gemini_findings and combined:
+        score = _score_from_findings(combined, errors)
+    fixes = gemini.suggested_fixes or local.suggested_fixes
+    tests = gemini.recommended_test_cases or local.recommended_test_cases
+    notes = gemini.agent_summaries or local.agent_summaries
+    summary = gemini.summary.strip() or local.summary
+    return FinalReview(
+        overall_score=score,
+        summary=summary,
+        suggested_fixes=fixes,
+        recommended_test_cases=tests,
+        agent_summaries=notes,
+        **buckets,
     )
 
 
@@ -177,7 +266,12 @@ def run_final_review_agent(state: ReviewState) -> Mapping[str, object]:
             user_prompt=user_prompt,
             agent_name="Final Review Agent",
         )
-        logger.info("Agent end: Final Review Agent (score=%s)", final.overall_score)
+        final = coalesce_final_review(final, reviews, errors)
+        logger.info(
+            "Agent end: Final Review Agent (score=%s findings=%s)",
+            final.overall_score,
+            len(_findings_from_final(final)),
+        )
         return {
             "final_review": final,
             "agent_status": {"final_review": "completed"},

@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
+import html
 from typing import Any
 
 import streamlit as st
 
 from llm.client import ConfigurationError, get_gemini_model_name
-from models.review_models import FinalReview, Finding, Severity
+from models.review_models import AgentReview, FinalReview, Finding, Severity
 from orchestration.graph import NODE_LABELS, SPECIALIST_NODES, get_review_graph
 from orchestration.state import create_initial_state
 from utils.file_utils import (
@@ -34,13 +35,108 @@ APP_CSS = """
 div[data-testid="stFileUploaderDropzoneInstructions"] { display: none; }
 textarea { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace !important; }
 .stButton > button { height: 2.6rem; }
+
+.agent-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0.7rem;
+  margin: 0.4rem 0 1rem;
+}
+.agent-card {
+  position: relative;
+  overflow: hidden;
+  border: 1px solid rgba(255,255,255,0.08);
+  background: linear-gradient(180deg, rgba(255,255,255,0.04), rgba(255,255,255,0.015));
+  border-radius: 14px;
+  padding: 0.85rem 0.95rem 0.95rem;
+  animation: card-in 420ms ease both;
+}
+.agent-card::after {
+  content: "";
+  position: absolute;
+  inset: auto 0 0 0;
+  height: 2px;
+  background: rgba(255,255,255,0.08);
+}
+.agent-card.is-running, .agent-card.is-pending {
+  border-color: rgba(110, 231, 183, 0.35);
+  box-shadow: 0 0 0 1px rgba(110, 231, 183, 0.12), 0 10px 30px rgba(16, 185, 129, 0.08);
+}
+.agent-card.is-running::after, .agent-card.is-pending::after {
+  background: linear-gradient(90deg, transparent, #6ee7b7, transparent);
+  animation: bar-slide 1.2s linear infinite;
+}
+.agent-card.is-completed {
+  border-color: rgba(110, 231, 183, 0.28);
+}
+.agent-card.is-completed::after { background: #6ee7b7; }
+.agent-card.is-failed {
+  border-color: rgba(248, 113, 113, 0.45);
+}
+.agent-card.is-failed::after { background: #f87171; }
+.agent-card.is-idle { opacity: 0.72; }
+.agent-card-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+.agent-name { font-weight: 600; letter-spacing: 0.01em; }
+.agent-meta { color: rgba(255,255,255,0.55); font-size: 0.8rem; margin-top: 0.28rem; }
+.agent-pill {
+  font-size: 0.72rem;
+  text-transform: lowercase;
+  letter-spacing: 0.04em;
+  padding: 0.18rem 0.5rem;
+  border-radius: 999px;
+  background: rgba(255,255,255,0.08);
+}
+.agent-card.is-running .agent-pill, .agent-card.is-pending .agent-pill {
+  background: rgba(110, 231, 183, 0.16);
+  color: #bbf7d0;
+  animation: pulse 1.4s ease-in-out infinite;
+}
+.agent-card.is-completed .agent-pill { background: rgba(110, 231, 183, 0.16); color: #bbf7d0; }
+.agent-card.is-failed .agent-pill { background: rgba(248, 113, 113, 0.16); color: #fecaca; }
+.finding-card {
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 12px;
+  padding: 0.8rem 0.9rem;
+  margin: 0.55rem 0;
+  background: rgba(255,255,255,0.03);
+  animation: card-in 380ms ease both;
+}
+.finding-card .sev { font-size: 0.72rem; font-weight: 700; letter-spacing: 0.04em; }
+@keyframes card-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes bar-slide {
+  from { transform: translateX(-40%); }
+  to { transform: translateX(40%); }
+}
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.45; }
+}
 </style>
 """
+
+
+AGENT_NODE_NAMES: dict[str, str] = {
+    "bug_agent": "Bug Detection Agent",
+    "security_agent": "Security Agent",
+    "performance_agent": "Performance Agent",
+    "quality_agent": "Code Quality Agent",
+    "testing_agent": "Testing Agent",
+    "final_review": "Final Review Agent",
+}
 
 
 def _init_session() -> None:
     st.session_state.setdefault("agent_status", {name: "idle" for name in STATUS_ORDER})
     st.session_state.setdefault("final_review", None)
+    st.session_state.setdefault("agent_reviews", [])
     st.session_state.setdefault("workflow_errors", [])
     st.session_state.setdefault("review_ran", False)
     st.session_state.setdefault("review_origin", "")
@@ -77,13 +173,26 @@ def _render_finding(finding: Finding) -> None:
     if finding.line_start:
         end = finding.line_end or finding.line_start
         lines = f" · lines {finding.line_start}–{end}"
-    st.markdown(f"**{finding.severity.value}** · {finding.title}{lines}")
-    st.write(finding.description)
-    if finding.code_snippet:
-        st.code(finding.code_snippet, language=None)
-    if finding.suggested_fix:
-        st.markdown(f"**Suggested fix:** {finding.suggested_fix}")
-    st.caption(f"{finding.category} · confidence {finding.confidence:.0%}")
+    title = html.escape(finding.title)
+    desc = html.escape(finding.description)
+    category = html.escape(finding.category)
+    sev = html.escape(finding.severity.value)
+    snippet = html.escape(finding.code_snippet) if finding.code_snippet else ""
+    fix = html.escape(finding.suggested_fix) if finding.suggested_fix else ""
+    snippet_html = f"<pre><code>{snippet}</code></pre>" if snippet else ""
+    fix_html = f"<p><strong>Suggested fix:</strong> {fix}</p>" if fix else ""
+    st.markdown(
+        f"""
+<div class="finding-card">
+  <div class="sev">{sev} · {title}{html.escape(lines)}</div>
+  <p>{desc}</p>
+  {snippet_html}
+  {fix_html}
+  <p style="opacity:.6;font-size:.8rem;margin:0;">{category} · confidence {finding.confidence:.0%}</p>
+</div>
+""",
+        unsafe_allow_html=True,
+    )
 
 
 def _render_finding_group(findings: list[Finding], *, empty_text: str) -> None:
@@ -91,9 +200,7 @@ def _render_finding_group(findings: list[Finding], *, empty_text: str) -> None:
         st.caption(empty_text)
         return
     for finding in findings:
-        expanded = finding.severity in {Severity.CRITICAL, Severity.HIGH}
-        with st.expander(f"{finding.severity.value}: {finding.title}", expanded=expanded):
-            _render_finding(finding)
+        _render_finding(finding)
 
 
 def _resolve_source(uploaded, pasted: str) -> tuple[str, str]:
@@ -113,13 +220,52 @@ def _status_mark(status: str) -> str:
     }.get(status, status)
 
 
+def _finding_count_for_node(node: str) -> int | None:
+    target = AGENT_NODE_NAMES.get(node)
+    if not target:
+        return None
+    for review in st.session_state.get("agent_reviews") or []:
+        name = review.agent_name if isinstance(review, AgentReview) else review.get("agent_name")
+        if name == target:
+            findings = review.findings if isinstance(review, AgentReview) else review.get("findings") or []
+            return len(findings)
+    return None
+
+
 def _render_status_panel() -> None:
     st.subheader("Agents")
     statuses: dict[str, str] = st.session_state.agent_status
-    for node in STATUS_ORDER:
-        left, right = st.columns([3.2, 1.2])
-        left.write(NODE_LABELS[node])
-        right.caption(_status_mark(statuses.get(node, "idle")))
+    cards: list[str] = ['<div class="agent-grid">']
+    for index, node in enumerate(STATUS_ORDER):
+        status = statuses.get(node, "idle")
+        mark = _status_mark(status)
+        count = _finding_count_for_node(node)
+        meta = "Waiting to start"
+        if status in {"pending", "running"}:
+            meta = "Reviewing source with Gemini…"
+        elif status == "completed":
+            if node == "final_review":
+                meta = "Merged specialist findings"
+            elif count is None:
+                meta = "Finished"
+            else:
+                meta = f"{count} finding{'s' if count != 1 else ''}"
+        elif status == "failed":
+            meta = "Agent reported an error"
+        delay = min(index * 70, 350)
+        cards.append(
+            f"""
+<div class="agent-card is-{html.escape(status)}" style="animation-delay:{delay}ms">
+  <div class="agent-card-top">
+    <span class="agent-name">{html.escape(NODE_LABELS[node])}</span>
+    <span class="agent-pill">{html.escape(mark)}</span>
+  </div>
+  <div class="agent-meta">{html.escape(meta)}</div>
+</div>
+"""
+        )
+    cards.append("</div>")
+    st.markdown("".join(cards), unsafe_allow_html=True)
 
 
 def _coerce_final_review(payload: Any) -> FinalReview | None:
@@ -130,9 +276,22 @@ def _coerce_final_review(payload: Any) -> FinalReview | None:
     return FinalReview.model_validate(payload)
 
 
+def _coerce_agent_reviews(payload: Any) -> list[AgentReview]:
+    if not payload:
+        return []
+    reviews: list[AgentReview] = []
+    for item in payload:
+        if isinstance(item, AgentReview):
+            reviews.append(item)
+        else:
+            reviews.append(AgentReview.model_validate(item))
+    return reviews
+
+
 def _run_review(source_code: str, language: str, status_slot: Any) -> None:
     st.session_state.agent_status = {name: "pending" for name in STATUS_ORDER}
     st.session_state.final_review = None
+    st.session_state.agent_reviews = []
     st.session_state.workflow_errors = []
     st.session_state.review_ran = True
 
@@ -158,6 +317,10 @@ def _run_review(source_code: str, language: str, status_slot: Any) -> None:
                     st.session_state.agent_status[node_name] = node_status
                     if isinstance(update, dict) and update.get("errors"):
                         st.session_state.workflow_errors.extend(update["errors"])
+                    if isinstance(update, dict) and update.get("agent_reviews"):
+                        st.session_state.agent_reviews.extend(
+                            _coerce_agent_reviews(update["agent_reviews"])
+                        )
                     if isinstance(update, dict) and update.get("final_review") is not None:
                         st.session_state.final_review = _coerce_final_review(update["final_review"])
                 paint()
@@ -193,54 +356,71 @@ def _render_dashboard(review: FinalReview) -> None:
     m6.metric("Info", counts[Severity.INFO.value])
     st.write(review.summary)
 
+    all_findings = _all_findings(review)
     tabs = st.tabs(
-        ["Critical", "Bugs", "Security", "Performance", "Quality", "Fixes", "Tests", "Agents"]
+        [
+            "All",
+            "Critical",
+            "Bugs",
+            "Security",
+            "Performance",
+            "Quality",
+            "Fixes",
+            "Tests",
+            "Agents",
+        ]
     )
     with tabs[0]:
-        _render_finding_group(review.critical_issues, empty_text="No critical issues.")
+        _render_finding_group(all_findings, empty_text="No findings were returned.")
     with tabs[1]:
-        _render_finding_group(review.bugs, empty_text="No additional bug findings.")
+        _render_finding_group(review.critical_issues, empty_text="No critical issues.")
     with tabs[2]:
-        _render_finding_group(
-            review.security_vulnerabilities,
-            empty_text="No additional security findings.",
-        )
+        _render_finding_group(review.bugs, empty_text="No bug findings.")
     with tabs[3]:
         _render_finding_group(
-            review.performance_problems,
-            empty_text="No additional performance findings.",
+            review.security_vulnerabilities,
+            empty_text="No security findings.",
         )
     with tabs[4]:
         _render_finding_group(
-            review.code_quality_issues,
-            empty_text="No additional quality findings.",
+            review.performance_problems,
+            empty_text="No performance findings.",
         )
     with tabs[5]:
+        _render_finding_group(
+            review.code_quality_issues,
+            empty_text="No quality findings.",
+        )
+    with tabs[6]:
         if not review.suggested_fixes:
             st.caption("No suggested fixes.")
         else:
             for fix in review.suggested_fixes:
-                with st.expander(f"{fix.severity.value}: {fix.title}"):
-                    st.write(fix.description)
-                    if fix.related_finding_title:
-                        st.caption(f"Related: {fix.related_finding_title}")
-    with tabs[6]:
+                st.markdown(
+                    f"""
+<div class="finding-card">
+  <div class="sev">{html.escape(fix.severity.value)} · {html.escape(fix.title)}</div>
+  <p>{html.escape(fix.description)}</p>
+  <p style="opacity:.6;font-size:.8rem;margin:0;">{html.escape(fix.related_finding_title or "")}</p>
+</div>
+""",
+                    unsafe_allow_html=True,
+                )
+    with tabs[7]:
         if not review.recommended_test_cases:
             st.caption("No recommended tests.")
         else:
-            st.dataframe(
-                [
-                    {
-                        "Title": test.title,
-                        "Type": test.test_type,
-                        "Description": test.description,
-                    }
-                    for test in review.recommended_test_cases
-                ],
-                use_container_width=True,
-                hide_index=True,
-            )
-    with tabs[7]:
+            for test in review.recommended_test_cases:
+                st.markdown(
+                    f"""
+<div class="finding-card">
+  <div class="sev">{html.escape(test.test_type)} · {html.escape(test.title)}</div>
+  <p>{html.escape(test.description)}</p>
+</div>
+""",
+                    unsafe_allow_html=True,
+                )
+    with tabs[8]:
         if review.agent_summaries:
             for note in review.agent_summaries:
                 st.write(f"- {note}")
@@ -311,6 +491,11 @@ def main() -> None:
                 st.caption(redact_secrets(item))
 
         review = st.session_state.final_review
+        specialist_reviews = _coerce_agent_reviews(st.session_state.get("agent_reviews"))
+        if review is not None and specialist_reviews:
+            from agents.final_review_agent import coalesce_final_review
+
+            review = coalesce_final_review(review, specialist_reviews, errors)
         if review is not None:
             _render_dashboard(review)
         elif st.session_state.review_ran:
