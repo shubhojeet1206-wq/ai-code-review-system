@@ -6,6 +6,7 @@ import html
 from typing import Any
 
 import streamlit as st
+from streamlit_ace import st_ace
 
 from llm.client import ConfigurationError, get_gemini_model_name
 from models.review_models import AgentReview, FinalReview, Finding, Severity
@@ -28,19 +29,44 @@ STATUS_ORDER = list(SPECIALIST_NODES) + ["final_review"]
 APP_CSS = """
 <style>
 .stAppDeployButton { display: none; }
+h3#source, [data-testid="stHeading"]:has(#source) { display: none !important; }
 [data-testid="stSidebar"] { display: none !important; }
 [data-testid="stSidebarCollapsedControl"] { display: none !important; }
-.block-container { padding-top: 1.6rem; max-width: 1180px; }
+.block-container { padding-top: 1.4rem; max-width: 1280px; }
 [data-testid="stHeader"] { background: transparent; }
 div[data-testid="stFileUploaderDropzoneInstructions"] { display: none; }
-textarea { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace !important; }
-.stButton > button { height: 2.6rem; }
+iframe[title*="streamlit_ace"] {
+  border: 1px solid rgba(255,255,255,0.10) !important;
+  border-radius: 14px !important;
+  overflow: hidden;
+}
+
+div.stButton > button {
+  height: 3.05rem;
+  border: 0 !important;
+  border-radius: 14px !important;
+  font-weight: 700 !important;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  font-size: 0.92rem !important;
+  color: #042f2e !important;
+  background: linear-gradient(135deg, #5eead4 0%, #2dd4bf 42%, #22d3ee 100%) !important;
+  box-shadow: 0 12px 28px rgba(34, 211, 238, 0.22), inset 0 1px 0 rgba(255,255,255,0.35);
+  transition: transform 180ms ease, box-shadow 180ms ease, filter 180ms ease;
+}
+div.stButton > button:hover {
+  transform: translateY(-2px);
+  filter: brightness(1.06);
+  box-shadow: 0 16px 34px rgba(34, 211, 238, 0.32), inset 0 1px 0 rgba(255,255,255,0.4);
+}
+div.stButton > button:active { transform: translateY(0); }
+div.stButton > button:focus { outline: none; box-shadow: 0 0 0 3px rgba(45, 212, 191, 0.35); }
 
 .agent-grid {
   display: grid;
-  grid-template-columns: 1fr;
-  gap: 0.7rem;
-  margin: 0.4rem 0 1rem;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.65rem;
+  margin: 0.2rem 0 0.4rem;
 }
 .agent-card {
   position: relative;
@@ -74,7 +100,7 @@ textarea { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace
   border-color: rgba(248, 113, 113, 0.45);
 }
 .agent-card.is-failed::after { background: #f87171; }
-.agent-card.is-idle { opacity: 0.72; }
+.agent-card.is-idle { opacity: 0.78; }
 .agent-card-top {
   display: flex;
   align-items: center;
@@ -98,15 +124,25 @@ textarea { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace
 }
 .agent-card.is-completed .agent-pill { background: rgba(110, 231, 183, 0.16); color: #bbf7d0; }
 .agent-card.is-failed .agent-pill { background: rgba(248, 113, 113, 0.16); color: #fecaca; }
+.finding-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.75rem;
+  margin-top: 0.6rem;
+}
 .finding-card {
   border: 1px solid rgba(255,255,255,0.08);
   border-radius: 12px;
-  padding: 0.8rem 0.9rem;
-  margin: 0.55rem 0;
+  padding: 0.85rem 0.95rem;
+  margin: 0;
   background: rgba(255,255,255,0.03);
   animation: card-in 380ms ease both;
 }
 .finding-card .sev { font-size: 0.72rem; font-weight: 700; letter-spacing: 0.04em; }
+.finding-card p { margin: 0.45rem 0 0; }
+@media (max-width: 900px) {
+  .agent-grid, .finding-grid { grid-template-columns: 1fr; }
+}
 @keyframes card-in {
   from { opacity: 0; transform: translateY(8px); }
   to { opacity: 1; transform: none; }
@@ -130,6 +166,17 @@ AGENT_NODE_NAMES: dict[str, str] = {
     "quality_agent": "Code Quality Agent",
     "testing_agent": "Testing Agent",
     "final_review": "Final Review Agent",
+}
+
+ACE_MODES: dict[str, str] = {
+    "Python": "python",
+    "Java": "java",
+    "JavaScript": "javascript",
+    "TypeScript": "typescript",
+    "C++": "c_cpp",
+    "C": "c_cpp",
+    "Go": "golang",
+    "SQL": "sql",
 }
 
 
@@ -168,7 +215,7 @@ def _all_findings(review: FinalReview) -> list[Finding]:
     return ordered
 
 
-def _render_finding(finding: Finding) -> None:
+def _finding_card_html(finding: Finding) -> str:
     lines = ""
     if finding.line_start:
         end = finding.line_end or finding.line_start
@@ -181,26 +228,29 @@ def _render_finding(finding: Finding) -> None:
     fix = html.escape(finding.suggested_fix) if finding.suggested_fix else ""
     snippet_html = f"<pre><code>{snippet}</code></pre>" if snippet else ""
     fix_html = f"<p><strong>Suggested fix:</strong> {fix}</p>" if fix else ""
-    st.markdown(
-        f"""
+    return f"""
 <div class="finding-card">
   <div class="sev">{sev} · {title}{html.escape(lines)}</div>
   <p>{desc}</p>
   {snippet_html}
   {fix_html}
-  <p style="opacity:.6;font-size:.8rem;margin:0;">{category} · confidence {finding.confidence:.0%}</p>
+  <p style="opacity:.6;font-size:.8rem;">{category} · confidence {finding.confidence:.0%}</p>
 </div>
-""",
+"""
+
+
+def _render_card_grid(cards: list[str], *, empty_text: str) -> None:
+    if not cards:
+        st.caption(empty_text)
+        return
+    st.markdown(
+        f'<div class="finding-grid">{"".join(cards)}</div>',
         unsafe_allow_html=True,
     )
 
 
 def _render_finding_group(findings: list[Finding], *, empty_text: str) -> None:
-    if not findings:
-        st.caption(empty_text)
-        return
-    for finding in findings:
-        _render_finding(finding)
+    _render_card_grid([_finding_card_html(item) for item in findings], empty_text=empty_text)
 
 
 def _resolve_source(uploaded, pasted: str) -> tuple[str, str]:
@@ -392,34 +442,32 @@ def _render_dashboard(review: FinalReview) -> None:
             empty_text="No quality findings.",
         )
     with tabs[6]:
-        if not review.suggested_fixes:
-            st.caption("No suggested fixes.")
-        else:
-            for fix in review.suggested_fixes:
-                st.markdown(
-                    f"""
+        _render_card_grid(
+            [
+                f"""
 <div class="finding-card">
   <div class="sev">{html.escape(fix.severity.value)} · {html.escape(fix.title)}</div>
   <p>{html.escape(fix.description)}</p>
-  <p style="opacity:.6;font-size:.8rem;margin:0;">{html.escape(fix.related_finding_title or "")}</p>
+  <p style="opacity:.6;font-size:.8rem;">{html.escape(fix.related_finding_title or "")}</p>
 </div>
-""",
-                    unsafe_allow_html=True,
-                )
+"""
+                for fix in review.suggested_fixes
+            ],
+            empty_text="No suggested fixes.",
+        )
     with tabs[7]:
-        if not review.recommended_test_cases:
-            st.caption("No recommended tests.")
-        else:
-            for test in review.recommended_test_cases:
-                st.markdown(
-                    f"""
+        _render_card_grid(
+            [
+                f"""
 <div class="finding-card">
   <div class="sev">{html.escape(test.test_type)} · {html.escape(test.title)}</div>
   <p>{html.escape(test.description)}</p>
 </div>
-""",
-                    unsafe_allow_html=True,
-                )
+"""
+                for test in review.recommended_test_cases
+            ],
+            empty_text="No recommended tests.",
+        )
     with tabs[8]:
         if review.agent_summaries:
             for note in review.agent_summaries:
@@ -449,9 +497,22 @@ def main() -> None:
     left, right = st.columns([1.05, 1.15], gap="large")
 
     with left:
-        st.subheader("Source")
         language = st.selectbox("Language", SUPPORTED_LANGUAGES, index=0)
-        pasted = st.text_area("Code", height=300, placeholder="Paste source code…")
+        st.caption("Code")
+        pasted = st_ace(
+            placeholder="Paste source code…",
+            language=ACE_MODES.get(language, "python"),
+            theme="tomorrow_night",
+            keybinding="vscode",
+            font_size=14,
+            tab_size=4,
+            height=280,
+            wrap=True,
+            show_gutter=True,
+            show_print_margin=False,
+            auto_update=True,
+            key="source_code_editor",
+        ) or ""
         uploaded = st.file_uploader(
             "Or upload a file",
             type=["py", "java", "js", "mjs", "cjs", "ts", "tsx", "cpp", "cc", "cxx", "hpp", "c", "h", "go", "sql"],
@@ -483,25 +544,22 @@ def main() -> None:
         st.session_state.review_origin = origin
         _run_review(source, language, status_slot)
 
-    with right:
-        errors = st.session_state.workflow_errors
-        if errors:
-            st.error("Some agents reported errors. Partial results may still be shown.")
-            for item in errors:
-                st.caption(redact_secrets(item))
+    errors = st.session_state.workflow_errors
+    if errors:
+        st.error("Some agents reported errors. Partial results may still be shown.")
+        for item in errors:
+            st.caption(redact_secrets(item))
 
-        review = st.session_state.final_review
-        specialist_reviews = _coerce_agent_reviews(st.session_state.get("agent_reviews"))
-        if review is not None and specialist_reviews:
-            from agents.final_review_agent import coalesce_final_review
+    review = st.session_state.final_review
+    specialist_reviews = _coerce_agent_reviews(st.session_state.get("agent_reviews"))
+    if review is not None and specialist_reviews:
+        from agents.final_review_agent import coalesce_final_review
 
-            review = coalesce_final_review(review, specialist_reviews, errors)
-        if review is not None:
-            _render_dashboard(review)
-        elif st.session_state.review_ran:
-            st.info("The workflow finished without a final review payload.")
-        else:
-            st.caption("Results will appear here after you click Review Code.")
+        review = coalesce_final_review(review, specialist_reviews, errors)
+    if review is not None:
+        _render_dashboard(review)
+    elif st.session_state.review_ran:
+        st.info("The workflow finished without a final review payload.")
 
 
 if __name__ == "__main__":
