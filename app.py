@@ -28,54 +28,193 @@ STATUS_ORDER = list(SPECIALIST_NODES) + ["final_review"]
 
 APP_CSS = """
 <style>
+@import url("https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap");
+
+html { scroll-behavior: smooth; }
 .stAppDeployButton { display: none; }
 h3#source, [data-testid="stHeading"]:has(#source) { display: none !important; }
 [data-testid="stSidebar"] { display: none !important; }
 [data-testid="stSidebarCollapsedControl"] { display: none !important; }
-.block-container { padding-top: 1.4rem; max-width: 1280px; }
 [data-testid="stHeader"] { background: transparent; }
 div[data-testid="stFileUploaderDropzoneInstructions"] { display: none; }
+
+.stApp {
+  font-family: "IBM Plex Sans", "Segoe UI", sans-serif;
+  background:
+    radial-gradient(1100px 520px at -8% -20%, rgba(94, 234, 212, 0.16), transparent 58%),
+    radial-gradient(900px 480px at 108% -8%, rgba(56, 189, 248, 0.12), transparent 52%),
+    radial-gradient(700px 420px at 70% 110%, rgba(167, 139, 250, 0.08), transparent 55%),
+    #070b14;
+}
+.stApp::before {
+  content: "";
+  position: fixed;
+  width: 420px;
+  height: 420px;
+  left: -80px;
+  top: 120px;
+  border-radius: 50%;
+  background: rgba(45, 212, 191, 0.09);
+  filter: blur(40px);
+  pointer-events: none;
+  animation: orb-drift 16s ease-in-out infinite;
+  z-index: 0;
+}
+.block-container {
+  position: relative;
+  z-index: 1;
+  padding-top: 1.35rem;
+  max-width: 1280px;
+  animation: page-in 640ms cubic-bezier(.22,1,.36,1) both;
+}
+
+h1, h2, h3, .hero-title, .agent-name {
+  font-family: Outfit, "IBM Plex Sans", sans-serif;
+}
+
+.hero {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 1rem;
+  margin: 0 0 1.35rem;
+  padding-bottom: 1.05rem;
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+}
+.hero-kicker {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  font-size: 0.72rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: #7dd3c7;
+  margin-bottom: 0.35rem;
+}
+.hero-kicker::before {
+  content: "";
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #5eead4;
+  box-shadow: 0 0 12px #5eead4;
+  animation: pulse 2s ease-in-out infinite;
+}
+.hero-title {
+  margin: 0;
+  font-size: 2.05rem;
+  font-weight: 650;
+  letter-spacing: -0.03em;
+  background: linear-gradient(120deg, #f8fafc 20%, #99f6e4 70%, #7dd3fc 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+.hero-sub { margin: 0.35rem 0 0; color: rgba(232,238,249,0.62); font-size: 0.95rem; }
+.model-chip {
+  flex-shrink: 0;
+  border: 1px solid rgba(94,234,212,0.22);
+  background: rgba(16, 24, 38, 0.72);
+  backdrop-filter: blur(10px);
+  border-radius: 999px;
+  padding: 0.55rem 0.9rem 0.55rem 0.7rem;
+  animation: card-in 700ms cubic-bezier(.22,1,.36,1) both;
+}
+.model-chip span {
+  display: block;
+  font-size: 0.68rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: rgba(232,238,249,0.5);
+}
+.model-chip strong {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.86rem;
+  color: #99f6e4;
+}
+
 iframe[title*="streamlit_ace"] {
-  border: 1px solid rgba(255,255,255,0.10) !important;
-  border-radius: 14px !important;
+  border: 1px solid rgba(255,255,255,0.08) !important;
+  border-radius: 16px !important;
   overflow: hidden;
+  box-shadow: 0 18px 40px rgba(0,0,0,0.22);
+  transition: box-shadow 280ms ease, border-color 280ms ease, transform 280ms ease;
+}
+iframe[title*="streamlit_ace"]:hover {
+  border-color: rgba(94,234,212,0.28) !important;
+  box-shadow: 0 22px 48px rgba(0,0,0,0.28);
+}
+
+[data-testid="stFileUploaderDropzone"] {
+  display: flex !important;
+  justify-content: center !important;
+  align-items: center !important;
+  border-radius: 14px !important;
+  border: 1px dashed rgba(94,234,212,0.28) !important;
+  background: rgba(255,255,255,0.03) !important;
+  transition: border-color 240ms ease, background 240ms ease, transform 240ms ease;
+}
+[data-testid="stFileUploaderDropzone"] button {
+  margin-left: auto !important;
+  margin-right: auto !important;
+}
+[data-testid="stFileUploaderDropzone"]:hover {
+  border-color: rgba(94,234,212,0.5) !important;
+  background: rgba(94,234,212,0.05) !important;
 }
 
 div.stButton > button {
-  height: 3.05rem;
+  position: relative;
+  overflow: hidden;
+  height: 3.15rem;
   border: 0 !important;
-  border-radius: 14px !important;
+  border-radius: 16px !important;
+  font-family: Outfit, sans-serif !important;
   font-weight: 700 !important;
-  letter-spacing: 0.06em;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
   font-size: 0.92rem !important;
   color: #042f2e !important;
-  background: linear-gradient(135deg, #5eead4 0%, #2dd4bf 42%, #22d3ee 100%) !important;
-  box-shadow: 0 12px 28px rgba(34, 211, 238, 0.22), inset 0 1px 0 rgba(255,255,255,0.35);
-  transition: transform 180ms ease, box-shadow 180ms ease, filter 180ms ease;
+  background: linear-gradient(135deg, #5eead4 0%, #2dd4bf 46%, #22d3ee 100%) !important;
+  box-shadow: 0 14px 32px rgba(34, 211, 238, 0.22), inset 0 1px 0 rgba(255,255,255,0.38);
+  transition: transform 220ms cubic-bezier(.22,1,.36,1), box-shadow 220ms ease, filter 220ms ease;
 }
 div.stButton > button:hover {
-  transform: translateY(-2px);
+  transform: translateY(-2px) scale(1.01);
   filter: brightness(1.06);
-  box-shadow: 0 16px 34px rgba(34, 211, 238, 0.32), inset 0 1px 0 rgba(255,255,255,0.4);
+  box-shadow: 0 18px 38px rgba(34, 211, 238, 0.34), inset 0 1px 0 rgba(255,255,255,0.45);
 }
-div.stButton > button:active { transform: translateY(0); }
-div.stButton > button:focus { outline: none; box-shadow: 0 0 0 3px rgba(45, 212, 191, 0.35); }
+div.stButton > button:active { transform: translateY(0) scale(0.995); }
+div.stButton > button:focus { outline: none; box-shadow: 0 0 0 3px rgba(45, 212, 191, 0.32); }
+div.stButton > button::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(110deg, transparent 20%, rgba(255,255,255,0.38) 48%, transparent 72%);
+  transform: translateX(-130%);
+  animation: shine 3.4s ease-in-out infinite;
+}
 
 .agent-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 0.65rem;
-  margin: 0.2rem 0 0.4rem;
+  gap: 0.7rem;
+  margin: 0.15rem 0 0.2rem;
 }
 .agent-card {
   position: relative;
   overflow: hidden;
   border: 1px solid rgba(255,255,255,0.08);
-  background: linear-gradient(180deg, rgba(255,255,255,0.04), rgba(255,255,255,0.015));
-  border-radius: 14px;
-  padding: 0.85rem 0.95rem 0.95rem;
-  animation: card-in 420ms ease both;
+  background: linear-gradient(180deg, rgba(255,255,255,0.055), rgba(255,255,255,0.018));
+  border-radius: 16px;
+  padding: 0.9rem 0.95rem 1rem;
+  animation: card-in 560ms cubic-bezier(.22,1,.36,1) both;
+  transition: transform 280ms cubic-bezier(.22,1,.36,1), border-color 280ms ease, box-shadow 280ms ease;
+}
+.agent-card:hover {
+  transform: translateY(-3px);
+  border-color: rgba(255,255,255,0.16);
+  box-shadow: 0 16px 36px rgba(0,0,0,0.22);
 }
 .agent-card::after {
   content: "";
@@ -85,22 +224,18 @@ div.stButton > button:focus { outline: none; box-shadow: 0 0 0 3px rgba(45, 212,
   background: rgba(255,255,255,0.08);
 }
 .agent-card.is-running, .agent-card.is-pending {
-  border-color: rgba(110, 231, 183, 0.35);
-  box-shadow: 0 0 0 1px rgba(110, 231, 183, 0.12), 0 10px 30px rgba(16, 185, 129, 0.08);
+  border-color: rgba(94, 234, 212, 0.38);
+  box-shadow: 0 0 0 1px rgba(94, 234, 212, 0.1), 0 12px 32px rgba(16, 185, 129, 0.1);
 }
 .agent-card.is-running::after, .agent-card.is-pending::after {
-  background: linear-gradient(90deg, transparent, #6ee7b7, transparent);
-  animation: bar-slide 1.2s linear infinite;
+  background: linear-gradient(90deg, transparent, #5eead4, transparent);
+  animation: bar-slide 1.15s linear infinite;
 }
-.agent-card.is-completed {
-  border-color: rgba(110, 231, 183, 0.28);
-}
-.agent-card.is-completed::after { background: #6ee7b7; }
-.agent-card.is-failed {
-  border-color: rgba(248, 113, 113, 0.45);
-}
-.agent-card.is-failed::after { background: #f87171; }
-.agent-card.is-idle { opacity: 0.78; }
+.agent-card.is-completed { border-color: rgba(94, 234, 212, 0.3); }
+.agent-card.is-completed::after { background: #5eead4; }
+.agent-card.is-failed { border-color: rgba(251, 113, 133, 0.42); }
+.agent-card.is-failed::after { background: #fb7185; }
+.agent-card.is-idle { opacity: 0.86; }
 .agent-card-top {
   display: flex;
   align-items: center;
@@ -108,52 +243,184 @@ div.stButton > button:focus { outline: none; box-shadow: 0 0 0 3px rgba(45, 212,
   gap: 0.75rem;
 }
 .agent-name { font-weight: 600; letter-spacing: 0.01em; }
-.agent-meta { color: rgba(255,255,255,0.55); font-size: 0.8rem; margin-top: 0.28rem; }
+.agent-meta { color: rgba(232,238,249,0.52); font-size: 0.8rem; margin-top: 0.32rem; }
 .agent-pill {
-  font-size: 0.72rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.7rem;
   text-transform: lowercase;
-  letter-spacing: 0.04em;
-  padding: 0.18rem 0.5rem;
+  letter-spacing: 0.05em;
+  padding: 0.2rem 0.55rem;
   border-radius: 999px;
   background: rgba(255,255,255,0.08);
 }
-.agent-card.is-running .agent-pill, .agent-card.is-pending .agent-pill {
-  background: rgba(110, 231, 183, 0.16);
-  color: #bbf7d0;
-  animation: pulse 1.4s ease-in-out infinite;
+.agent-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #64748b;
 }
-.agent-card.is-completed .agent-pill { background: rgba(110, 231, 183, 0.16); color: #bbf7d0; }
-.agent-card.is-failed .agent-pill { background: rgba(248, 113, 113, 0.16); color: #fecaca; }
+.agent-card.is-running .agent-pill, .agent-card.is-pending .agent-pill {
+  background: rgba(94, 234, 212, 0.14);
+  color: #bbf7d0;
+}
+.agent-card.is-running .agent-dot, .agent-card.is-pending .agent-dot {
+  background: #5eead4;
+  box-shadow: 0 0 0 0 rgba(94,234,212,0.55);
+  animation: ping 1.5s ease-out infinite;
+}
+.agent-card.is-completed .agent-pill { background: rgba(94, 234, 212, 0.14); color: #bbf7d0; }
+.agent-card.is-completed .agent-dot { background: #5eead4; }
+.agent-card.is-failed .agent-pill { background: rgba(251, 113, 133, 0.14); color: #fecaca; }
+.agent-card.is-failed .agent-dot { background: #fb7185; }
+
+.review-panel {
+  margin-top: 0.35rem;
+  padding: 1.05rem 1.1rem 1.15rem;
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 18px;
+  background: linear-gradient(180deg, rgba(255,255,255,0.045), rgba(255,255,255,0.02));
+  animation: card-in 620ms cubic-bezier(.22,1,.36,1) both;
+}
+.review-kicker {
+  font-size: 0.7rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: #7dd3c7;
+}
+.review-panel h3 { margin: 0.15rem 0 0.85rem; font-size: 1.45rem; }
+.metric-row {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 0.55rem;
+}
+.metric {
+  padding: 0.7rem 0.65rem 0.75rem;
+  border-radius: 14px;
+  background: rgba(7, 11, 20, 0.45);
+  border: 1px solid rgba(255,255,255,0.06);
+  animation: card-in 640ms cubic-bezier(.22,1,.36,1) both;
+}
+.metric span {
+  display: block;
+  font-size: 0.7rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgba(232,238,249,0.5);
+}
+.metric strong {
+  display: block;
+  margin-top: 0.2rem;
+  font-family: Outfit, sans-serif;
+  font-size: 1.45rem;
+  font-weight: 650;
+}
+.metric.score strong { color: #5eead4; }
+.metric.critical strong { color: #fb7185; }
+.metric.high strong { color: #fb923c; }
+.metric.medium strong { color: #fbbf24; }
+.metric.low strong { color: #38bdf8; }
+.metric.info strong { color: #c4b5fd; }
+.review-summary {
+  margin: 0.95rem 0 0;
+  color: rgba(232,238,249,0.82);
+  line-height: 1.55;
+}
+
 .finding-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 0.75rem;
-  margin-top: 0.6rem;
+  gap: 0.8rem;
+  margin-top: 0.7rem;
 }
 .finding-card {
   border: 1px solid rgba(255,255,255,0.08);
-  border-radius: 12px;
-  padding: 0.85rem 0.95rem;
+  border-radius: 14px;
+  padding: 0.9rem 0.95rem;
   margin: 0;
   background: rgba(255,255,255,0.03);
-  animation: card-in 380ms ease both;
+  animation: card-in 500ms cubic-bezier(.22,1,.36,1) both;
+  transition: transform 260ms cubic-bezier(.22,1,.36,1), border-color 260ms ease, box-shadow 260ms ease;
 }
-.finding-card .sev { font-size: 0.72rem; font-weight: 700; letter-spacing: 0.04em; }
-.finding-card p { margin: 0.45rem 0 0; }
+.finding-card:hover {
+  transform: translateY(-3px);
+  border-color: rgba(255,255,255,0.16);
+  box-shadow: 0 14px 30px rgba(0,0,0,0.2);
+}
+.finding-card .sev { font-size: 0.74rem; font-weight: 700; letter-spacing: 0.04em; }
+.finding-card p { margin: 0.45rem 0 0; color: rgba(232,238,249,0.82); line-height: 1.5; }
+.finding-card pre {
+  margin: 0.55rem 0 0;
+  padding: 0.6rem 0.7rem;
+  border-radius: 10px;
+  background: rgba(0,0,0,0.28);
+  overflow-x: auto;
+  font-size: 0.8rem;
+}
+.finding-card.sev-critical { border-color: rgba(251,113,133,0.28); }
+.finding-card.sev-critical .sev { color: #fb7185; }
+.finding-card.sev-high { border-color: rgba(251,146,60,0.28); }
+.finding-card.sev-high .sev { color: #fb923c; }
+.finding-card.sev-medium { border-color: rgba(251,191,36,0.24); }
+.finding-card.sev-medium .sev { color: #fbbf24; }
+.finding-card.sev-low { border-color: rgba(56,189,248,0.24); }
+.finding-card.sev-low .sev { color: #38bdf8; }
+.finding-card.sev-info { border-color: rgba(196,181,253,0.24); }
+.finding-card.sev-info .sev { color: #c4b5fd; }
+.finding-grid .finding-card:nth-child(2) { animation-delay: 50ms; }
+.finding-grid .finding-card:nth-child(3) { animation-delay: 90ms; }
+.finding-grid .finding-card:nth-child(4) { animation-delay: 130ms; }
+
+[data-baseweb="tab-list"] { gap: 0.15rem; }
+button[data-baseweb="tab"] {
+  transition: color 200ms ease, background 200ms ease !important;
+}
+.stTabs [data-baseweb="tab-highlight"] {
+  transition: transform 280ms cubic-bezier(.22,1,.36,1) !important;
+}
+
 @media (max-width: 900px) {
-  .agent-grid, .finding-grid { grid-template-columns: 1fr; }
+  .agent-grid, .finding-grid, .metric-row { grid-template-columns: 1fr 1fr; }
+  .hero { flex-direction: column; align-items: flex-start; }
+}
+@media (max-width: 640px) {
+  .agent-grid, .finding-grid, .metric-row { grid-template-columns: 1fr; }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation: none !important;
+    transition: none !important;
+  }
+}
+
+@keyframes page-in {
+  from { opacity: 0; transform: translateY(14px); }
+  to { opacity: 1; transform: none; }
 }
 @keyframes card-in {
-  from { opacity: 0; transform: translateY(8px); }
+  from { opacity: 0; transform: translateY(10px) scale(0.985); }
   to { opacity: 1; transform: none; }
 }
 @keyframes bar-slide {
-  from { transform: translateX(-40%); }
-  to { transform: translateX(40%); }
+  from { transform: translateX(-45%); }
+  to { transform: translateX(45%); }
 }
 @keyframes pulse {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.45; }
+}
+@keyframes ping {
+  0% { box-shadow: 0 0 0 0 rgba(94,234,212,0.55); }
+  80%, 100% { box-shadow: 0 0 0 8px rgba(94,234,212,0); }
+}
+@keyframes shine {
+  0%, 58% { transform: translateX(-130%); }
+  78%, 100% { transform: translateX(130%); }
+}
+@keyframes orb-drift {
+  0%, 100% { transform: translate(0, 0); }
+  50% { transform: translate(70px, 40px); }
 }
 </style>
 """
@@ -229,7 +496,7 @@ def _finding_card_html(finding: Finding) -> str:
     snippet_html = f"<pre><code>{snippet}</code></pre>" if snippet else ""
     fix_html = f"<p><strong>Suggested fix:</strong> {fix}</p>" if fix else ""
     return f"""
-<div class="finding-card">
+<div class="finding-card sev-{html.escape(finding.severity.value.lower())}">
   <div class="sev">{sev} · {title}{html.escape(lines)}</div>
   <p>{desc}</p>
   {snippet_html}
@@ -308,7 +575,7 @@ def _render_status_panel() -> None:
 <div class="agent-card is-{html.escape(status)}" style="animation-delay:{delay}ms">
   <div class="agent-card-top">
     <span class="agent-name">{html.escape(NODE_LABELS[node])}</span>
-    <span class="agent-pill">{html.escape(mark)}</span>
+    <span class="agent-pill"><span class="agent-dot"></span>{html.escape(mark)}</span>
   </div>
   <div class="agent-meta">{html.escape(meta)}</div>
 </div>
@@ -396,15 +663,24 @@ def _run_review(source_code: str, language: str, status_slot: Any) -> None:
 
 def _render_dashboard(review: FinalReview) -> None:
     counts = _count_severities(review)
-    st.subheader("Review")
-    m1, m2, m3, m4, m5, m6 = st.columns(6)
-    m1.metric("Score", f"{review.overall_score}")
-    m2.metric("Critical", counts[Severity.CRITICAL.value])
-    m3.metric("High", counts[Severity.HIGH.value])
-    m4.metric("Medium", counts[Severity.MEDIUM.value])
-    m5.metric("Low", counts[Severity.LOW.value])
-    m6.metric("Info", counts[Severity.INFO.value])
-    st.write(review.summary)
+    st.markdown(
+        f"""
+<div class="review-panel">
+  <div class="review-kicker">Unified report</div>
+  <h3>Review</h3>
+  <div class="metric-row">
+    <div class="metric score" style="animation-delay:40ms"><span>Score</span><strong>{review.overall_score}</strong></div>
+    <div class="metric critical" style="animation-delay:80ms"><span>Critical</span><strong>{counts[Severity.CRITICAL.value]}</strong></div>
+    <div class="metric high" style="animation-delay:120ms"><span>High</span><strong>{counts[Severity.HIGH.value]}</strong></div>
+    <div class="metric medium" style="animation-delay:160ms"><span>Medium</span><strong>{counts[Severity.MEDIUM.value]}</strong></div>
+    <div class="metric low" style="animation-delay:200ms"><span>Low</span><strong>{counts[Severity.LOW.value]}</strong></div>
+    <div class="metric info" style="animation-delay:240ms"><span>Info</span><strong>{counts[Severity.INFO.value]}</strong></div>
+  </div>
+  <p class="review-summary">{html.escape(review.summary)}</p>
+</div>
+""",
+        unsafe_allow_html=True,
+    )
 
     all_findings = _all_findings(review)
     tabs = st.tabs(
@@ -445,7 +721,7 @@ def _render_dashboard(review: FinalReview) -> None:
         _render_card_grid(
             [
                 f"""
-<div class="finding-card">
+<div class="finding-card sev-{html.escape(fix.severity.value.lower())}">
   <div class="sev">{html.escape(fix.severity.value)} · {html.escape(fix.title)}</div>
   <p>{html.escape(fix.description)}</p>
   <p style="opacity:.6;font-size:.8rem;">{html.escape(fix.related_finding_title or "")}</p>
@@ -470,15 +746,20 @@ def _render_dashboard(review: FinalReview) -> None:
         )
     with tabs[8]:
         if review.agent_summaries:
-            for note in review.agent_summaries:
-                st.write(f"- {note}")
+            _render_card_grid(
+                [
+                    f'<div class="finding-card"><p>{html.escape(note)}</p></div>'
+                    for note in review.agent_summaries
+                ],
+                empty_text="No agent notes.",
+            )
         else:
             st.caption("No agent notes.")
 
 
 def main() -> None:
     st.set_page_config(
-        page_title="AI Code Review",
+        page_title="Code Sentinel",
         page_icon="◆",
         layout="wide",
         initial_sidebar_state="collapsed",
@@ -486,13 +767,22 @@ def main() -> None:
     _init_session()
     st.markdown(APP_CSS, unsafe_allow_html=True)
 
-    title_col, model_col = st.columns([3.5, 1.5])
-    with title_col:
-        st.title("AI Code Review")
-        st.caption("LangGraph specialists + Gemini. Upload wins over pasted code.")
-    with model_col:
-        st.caption("Model")
-        st.code(get_gemini_model_name(), language=None)
+    st.markdown(
+        f"""
+<div class="hero">
+  <div>
+    <div class="hero-kicker">Multi-agent review</div>
+    <h1 class="hero-title">Code Sentinel</h1>
+    <p class="hero-sub">LangGraph specialists + Gemini. Upload wins over pasted code.</p>
+  </div>
+  <div class="model-chip">
+    <span>Model</span>
+    <strong>{html.escape(get_gemini_model_name())}</strong>
+  </div>
+</div>
+""",
+        unsafe_allow_html=True,
+    )
 
     left, right = st.columns([1.05, 1.15], gap="large")
 
@@ -502,7 +792,7 @@ def main() -> None:
         pasted = st_ace(
             placeholder="Paste source code…",
             language=ACE_MODES.get(language, "python"),
-            theme="tomorrow_night",
+            theme="nord_dark",
             keybinding="vscode",
             font_size=14,
             tab_size=4,
